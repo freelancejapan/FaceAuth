@@ -38,18 +38,26 @@ using anet_type = dlib::loss_metric<dlib::fc_no_bias<128, dlib::avg_pool_everyth
                                                         dlib::input_rgb_image_sized<150>
                                                 >>>>>>>>>>>>;
 
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::stringstream ss(s);
+    std::string item;
+    std::vector<std::string> elems;
+    while (std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
 
-const std::string tensorflowConfigFile = "/usr/lib64/security/pam_camera/opencv_face_detector.pbtxt";
-const std::string tensorflowModelFile = "/usr/lib64/security/pam_camera/opencv_face_detector_uint8.pb";
+int main(int argc, char *argv[]) {
+    std::string userId = "";
+    if (argc == 2) {
+        userId = std::string(argv[1]);
+    } else {
+        std::cout << "Usage:" << std::endl;
+        std::cout << "      FaceAuth userid" << std::endl;
+        return 130;
+    }
 
-const std::string torchStereoDetectFile = "/usr/lib64/security/pam_camera/torch_depth_cls.onnx";
-
-const std::string dlibShapeConfigFile = "/usr/lib64/security/pam_camera/shape_predictor_5_face_landmarks.dat";
-const std::string dlibResNetFace128dFile = "/usr/lib64/security/pam_camera/dlib_face_recognition_resnet_model_v1.dat";
-
-const std::string basePath = "/usr/lib64/security/pam_camera/";
-
-int main() {
     const int CamWidth = 1280;
     const int CamHeight = 720;
     const int ViewWidth = 720;
@@ -91,6 +99,7 @@ int main() {
     //   -> 110 camera hardware not found / hardware can not use ...
     //   -> 120 means face auth continuous fail count > 3 (continuous succeed 3 times can login)
     //   -> 121 means timeout (5 seconds no face detected)
+    //   -> 130 parameter wrong
     int resCode = 0;
 
     auto start = std::chrono::system_clock::now();
@@ -110,6 +119,17 @@ int main() {
     std::random_device rd;
     std::mt19937 mt(rd());
     std::uniform_real_distribution<double> dist(1.0, 10.0);
+
+    cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::load(svmConfig);
+    std::map<std::string, std::string> mp;
+
+    std::ifstream file(userSVMMapConfig);
+    std::string tmpstr;
+    while (std::getline(file, tmpstr)) {
+        auto tmpres = split(tmpstr, '\t');
+        mp.insert(std::make_pair(tmpres[0], tmpres[1]));
+    }
+    file.close();
 
     while (true) {
         //check execution time > 5 seconds
@@ -248,10 +268,18 @@ int main() {
 
                 std::vector<dlib::matrix<float, 0, 1>> face_descriptors = dlibFace128dNet(faces);
                 if (face_descriptors.size() == 1) {
-                    //cv::FileStorage saveFaceInfo("/home/" + username + "/faceconf1.xml", cv::FileStorage::WRITE);
-                    //saveFaceInfo << "matdata" << dlib::toMat(face_descriptors[0]);
-                    auto face128d = dlib::toMat(face_descriptors[0]);
-                    std::cout << "After " << face128d.reshape(0,1) << std::endl;
+                    auto face128d = dlib::toMat(face_descriptors[0]).reshape(0, 1);
+                    Mat predictOutput;
+                    auto predictRes = svm->predict(face128d);
+
+                    if (mp.count(std::to_string(static_cast<int>(predictRes))) == 1) {
+                        if (userId == mp.at(std::to_string(static_cast<int>(predictRes)))) {
+                            std::cout << "authentication for [" << userId << "] succeed " << std::endl;
+                        }
+                    }
+
+                    std::cout << mp.size() << " , " << mp.at(std::to_string(static_cast<int>(predictRes))) << " , "
+                              << predictRes << std::endl;
                 }
             }
         }

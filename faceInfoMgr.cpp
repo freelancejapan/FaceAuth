@@ -3,6 +3,10 @@
 //
 
 #include <iostream>
+#include <stdio.h>
+
+#include <functional>
+
 #include <librealsense2/rs.hpp>
 #include <chrono>
 
@@ -43,22 +47,57 @@ using anet_type = dlib::loss_metric<dlib::fc_no_bias<128, dlib::avg_pool_everyth
                                                 >>>>>>>>>>>>;
 
 
-const std::string tensorflowConfigFile = "/usr/lib64/security/pam_camera/opencv_face_detector.pbtxt";
-const std::string tensorflowModelFile = "/usr/lib64/security/pam_camera/opencv_face_detector_uint8.pb";
 
-const std::string torchStereoDetectFile = "/usr/lib64/security/pam_camera/torch_depth_cls.onnx";
 
-const std::string dlibShapeConfigFile = "/usr/lib64/security/pam_camera/shape_predictor_5_face_landmarks.dat";
-const std::string dlibResNetFace128dFile = "/usr/lib64/security/pam_camera/dlib_face_recognition_resnet_model_v1.dat";
+int main(int argc, char *argv[]) {
+    bool shouldExtract128dFlag = false;
+    std::vector<cv::Mat> face128dList;
+    bool addUserFlag = false;
+    std::string filename = "";
+    std::string userId = "";
 
-const std::string basePath = "/usr/lib64/security/pam_camera/";
+    if (argc == 3) {
+        if (strcmp(argv[1], "test") == 0
+            && strcmp(argv[2], "camera") == 0) {
+            //test camera
+        } else if (strcmp(argv[1], "list") == 0
+                   && strcmp(argv[2], "all") == 0) {
+            //list all user
+        } else if (strcmp(argv[1], "add") == 0) {
+            //add user
+            //remove exist and create new
+            //recalculate svc
+            addUserFlag = true;
+            shouldExtract128dFlag = true;
+            userId = std::string(argv[2]);
+            filename = userConfigPath + userId;
 
-int main() {
+        } else if (strcmp(argv[1], "del") == 0) {
+            //delete user
+            cv::String userId(argv[2]);
+        } else {
+            std::cout << "Usage:" << std::endl;
+            std::cout << "      faceInfoMgr add userid" << std::endl;
+            std::cout << "      faceInfoMgr del userid" << std::endl;
+            std::cout << "      faceInfoMgr list all" << std::endl;
+            std::cout << "      faceInfoMgr test camera" << std::endl;
+            return 0;
+        }
+    } else {
+        std::cout << "Usage:" << std::endl;
+        std::cout << "      faceInfoMgr add userid" << std::endl;
+        std::cout << "      faceInfoMgr del userid" << std::endl;
+        std::cout << "      faceInfoMgr list all" << std::endl;
+        std::cout << "      faceInfoMgr test camera" << std::endl;
+        return 0;
+    }
+
     const int CamWidth = 1280;
     const int CamHeight = 720;
     const int ViewWidth = 720;
     const int ViewHeight = 720;
     const int TimeoutSeconds = 50;
+    const int MinFace128dCount = 64;
 
     const int Margin = 20;
     const float AreanRatioMin = 1.0 / 9.0;
@@ -88,13 +127,6 @@ int main() {
         return 101;
     }
 
-    // code definitions
-    //   -> 0 means succeed
-    //   -> 100 means user's 128d config file not found or broken ...
-    //   -> 101 means machine learning model file not found or broken ...
-    //   -> 110 camera hardware not found / hardware can not use ...
-    //   -> 120 means face auth continuous fail count > 3 (continuous succeed 3 times can login)
-    //   -> 121 means timeout (5 seconds no face detected)
     int resCode = 0;
 
     auto start = std::chrono::system_clock::now();
@@ -152,8 +184,8 @@ int main() {
                                                    cv::Size(300, 300),
                                                    cv::Scalar(104.0, 177.0, 123.0),
                                                    false); //Convert Mat to batch of images
-        tfFaceNet.setInput(inputBlob, "data");
-        cv::Mat detection = tfFaceNet.forward("detection_out");
+        tfFaceNet.setInput(inputBlob);
+        cv::Mat detection = tfFaceNet.forward();
         cv::Mat detectionMat(detection.size[2], detection.size[3], CV_32F, detection.ptr<float>());
         int x1 = 0;
         int y1 = 0;
@@ -219,7 +251,10 @@ int main() {
             }
         }
 
-        if (opencvDetectedCount == 1 && isFacePositionNormal == true && isDepthNormal == true) {
+        if (opencvDetectedCount == 1
+            && isFacePositionNormal == true
+            && isDepthNormal == true
+            && shouldExtract128dFlag == true) {
             cv::Mat resized;
             cv::resize(color_mat, resized, cv::Size(360, 360));
             dlib::cv_image<dlib::bgr_pixel> dlibImg(resized);
@@ -252,16 +287,52 @@ int main() {
 
                 std::vector<dlib::matrix<float, 0, 1>> face_descriptors = dlibFace128dNet(faces);
                 if (face_descriptors.size() == 1) {
-                    //cv::FileStorage saveFaceInfo("/home/" + username + "/faceconf1.xml", cv::FileStorage::WRITE);
-                    //saveFaceInfo << "matdata" << dlib::toMat(face_descriptors[0]);
+
                     auto face128d = dlib::toMat(face_descriptors[0]);
-                    std::cout << "After " << face128d.reshape(0,1) << std::endl;
+                    //std::cout << "After " << face128d.reshape(0, 1) << std::endl;
+                    if (addUserFlag == true) {
+                        //reset time when succeed add face
+                        start = std::chrono::system_clock::now();
+                        face128dList.push_back(face128d.reshape(0, 1));
+                        if (face128dList.size() > MinFace128dCount) {
+                            break;
+                        }
+                    }
                 }
             }
         }
 
         imshow(window_name, color_mat);
         if (cv::waitKey(1) >= 0) break;
+    }
+
+    pipe.stop();
+
+    if (face128dList.size() > MinFace128dCount) {
+        cv::Mat toSave = face128dList[0];
+        for (int i = 1; i < face128dList.size(); i++) {
+            toSave.push_back(face128dList[i]);
+        }
+        if (fileExists(filename)) {
+            //delete
+            remove(filename.c_str());
+        }
+        if (fileExists(filename)) {
+            //check delete succeed
+            std::cout << "Delete Old Face info for [" << userId << "] failed." << std::endl;
+            return 2;
+        }
+        cv::FileStorage saveFaceInfo(filename, cv::FileStorage::WRITE);
+        saveFaceInfo << "matdata" << toSave;
+        saveFaceInfo.release();
+        if (fileExists(filename)) {
+            std::cout << "Face info for [" << userId << "] added succeed." << std::endl;
+            updateSVC();
+            return 0;
+        } else {
+            std::cout << "Face info for [" << userId << "] added failed." << std::endl;
+            return 1;
+        }
     }
 
     std::cout << "@@@@ Test Execution by Pam, Return " << resCode << std::endl;
