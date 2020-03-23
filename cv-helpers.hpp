@@ -21,7 +21,6 @@ const std::string torchStereoDetectFile = "/usr/lib64/security/pam_camera/torch_
 const std::string dlibShapeConfigFile = "/usr/lib64/security/pam_camera/shape_predictor_5_face_landmarks.dat";
 const std::string dlibResNetFace128dFile = "/usr/lib64/security/pam_camera/dlib_face_recognition_resnet_model_v1.dat";
 
-const std::string basePath = "/usr/lib64/security/pam_camera/";
 const std::string otherConfigPath = "/usr/lib64/security/pam_camera/OtherConfig.xml";
 const std::string userConfigPath = "/usr/lib64/security/pam_camera/userlist/";
 

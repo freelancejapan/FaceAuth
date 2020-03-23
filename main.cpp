@@ -48,14 +48,79 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
+const int rt_succeed = 0;
+const int rt_user128dfilenotfoundorbroken = 100;
+const int rt_mlmodelfilenotfoundorbroken = 101;
+const int rt_hardwarefail = 110;
+const int rt_authfailtoomuch = 120;
+const int rt_timeout = 121;
+const int rt_parameterwrong = 130;
+
+// code definitions
+//   -> 0 means succeed
+//   -> 100 means user's 128d config file not found or broken ...
+//   -> 101 means machine learning model file not found or broken ...
+//   -> 110 camera hardware not found / hardware can not use ...
+//   -> 120 means face auth continuous fail count > 3 (continuous succeed 3 times can login)
+//   -> 121 means timeout (5 seconds no face detected)
+//   -> 130 parameter wrong
 int main(int argc, char *argv[]) {
     std::string userId = "";
     if (argc == 2) {
         userId = std::string(argv[1]);
+
+        //check user config exist
+        if (fileExists(userConfigPath + userId)) {
+            //user 128D data exist
+        } else {
+            return rt_user128dfilenotfoundorbroken;
+        }
+
+        //check machine learning model file exist
+        if (fileExists(tensorflowConfigFile)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(tensorflowModelFile)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(torchStereoDetectFile)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(dlibShapeConfigFile)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(dlibResNetFace128dFile)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(otherConfigPath)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(svmConfig)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
+        if (fileExists(userSVMMapConfig)) {
+            //ml model file exist
+        } else {
+            return rt_mlmodelfilenotfoundorbroken;
+        }
     } else {
         std::cout << "Usage:" << std::endl;
         std::cout << "      FaceAuth userid" << std::endl;
-        return 130;
+        return rt_parameterwrong;
     }
 
     const int CamWidth = 1280;
@@ -85,22 +150,14 @@ int main(int argc, char *argv[]) {
         dlib::deserialize(dlibShapeConfigFile) >> dlibShapePredictor;
         dlib::deserialize(dlibResNetFace128dFile) >> dlibFace128dNet;
     } catch (...) {
-        return 101;
+        return rt_mlmodelfilenotfoundorbroken;
     }
 
     if (tfFaceNet.empty() || torchDepthNet.empty()) {
-        return 101;
+        return rt_mlmodelfilenotfoundorbroken;
     }
 
-    // code definitions
-    //   -> 0 means succeed
-    //   -> 100 means user's 128d config file not found or broken ...
-    //   -> 101 means machine learning model file not found or broken ...
-    //   -> 110 camera hardware not found / hardware can not use ...
-    //   -> 120 means face auth continuous fail count > 3 (continuous succeed 3 times can login)
-    //   -> 121 means timeout (5 seconds no face detected)
-    //   -> 130 parameter wrong
-    int resCode = 0;
+    int resCode = rt_timeout;
 
     auto start = std::chrono::system_clock::now();
 
@@ -136,7 +193,7 @@ int main(int argc, char *argv[]) {
         auto end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds = end - start;
         if (elapsed_seconds.count() > TimeoutSeconds) {
-            resCode = 121;
+            resCode = rt_timeout;
             break;
         }
 
@@ -275,10 +332,12 @@ int main(int argc, char *argv[]) {
                     if (mp.count(std::to_string(static_cast<int>(predictRes))) == 1) {
                         if (userId == mp.at(std::to_string(static_cast<int>(predictRes)))) {
                             std::cout << "authentication for [" << userId << "] succeed " << std::endl;
+                            resCode = rt_succeed;
+                            break;
                         }
                     }
 
-                    std::cout << mp.size() << " , " << mp.at(std::to_string(static_cast<int>(predictRes))) << " , "
+                    std::cout << mp.size() << " , " << mp.count(std::to_string(static_cast<int>(predictRes))) << " , "
                               << predictRes << std::endl;
                 }
             }
