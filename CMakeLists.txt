@@ -12,7 +12,7 @@ find_package(OpenCV REQUIRED)
 
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
-add_executable(FaceAuth main.cpp cv-helpers.hpp filter.hpp)
+add_executable(FaceAuth main.cpp cv-helpers.hpp filter.hpp svm.hpp svm.cpp)
 add_executable(FaceInfoMgr faceInfoMgr.cpp cv-helpers.hpp filter.hpp )
 
 target_link_libraries(FaceAuth dlib::dlib)

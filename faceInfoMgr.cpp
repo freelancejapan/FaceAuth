@@ -47,11 +47,9 @@ using anet_type = dlib::loss_metric<dlib::fc_no_bias<128, dlib::avg_pool_everyth
                                                 >>>>>>>>>>>>;
 
 
-
-
 int main(int argc, char *argv[]) {
     bool shouldExtract128dFlag = false;
-    std::vector<cv::Mat> face128dList;
+    std::vector<std::vector<float>> face128dList;
     bool addUserFlag = false;
     std::string filename = "";
     std::string userId = "";
@@ -97,7 +95,7 @@ int main(int argc, char *argv[]) {
     const int ViewWidth = 720;
     const int ViewHeight = 720;
     const int TimeoutSeconds = 50;
-    const int MinFace128dCount = 64;
+    const int MinFace128dCount = 128;
 
     const int Margin = 20;
     const float AreanRatioMin = 1.0 / 9.0;
@@ -287,13 +285,20 @@ int main(int argc, char *argv[]) {
 
                 std::vector<dlib::matrix<float, 0, 1>> face_descriptors = dlibFace128dNet(faces);
                 if (face_descriptors.size() == 1) {
+                    //fresh time when face detected
+                    start = std::chrono::system_clock::now();
 
-                    auto face128d = dlib::toMat(face_descriptors[0]);
-                    //std::cout << "After " << face128d.reshape(0, 1) << std::endl;
+                    auto face128d = dlib::toMat(face_descriptors[0]).reshape(0, 1);
+                    double min, max;
+                    cv::minMaxLoc(face128d, &min, &max);
+                    //std::cout << "Max is " << max << std::endl;
+                    std::cout << "Dlib Type " << max << std::endl;
                     if (addUserFlag == true) {
                         //reset time when succeed add face
                         start = std::chrono::system_clock::now();
-                        face128dList.push_back(face128d.reshape(0, 1));
+                        std::vector<float> tmpvec;
+                        face128d.row(0).copyTo(tmpvec);
+                        face128dList.push_back(tmpvec);
                         if (face128dList.size() > MinFace128dCount) {
                             break;
                         }
@@ -309,10 +314,20 @@ int main(int argc, char *argv[]) {
     pipe.stop();
 
     if (face128dList.size() > MinFace128dCount) {
-        cv::Mat toSave = face128dList[0];
-        for (int i = 1; i < face128dList.size(); i++) {
-            toSave.push_back(face128dList[i]);
+        cv::Mat toSave = Mat(face128dList.size(), face128dList[0].size(), CV_32F);
+        for (int i = 0; i < face128dList.size(); i++) {
+            for (int j = 0; j < face128dList[i].size(); j++) {
+                toSave.at<float>(i, j) = face128dList[i][j];
+            }
         }
+//        toSave.convertTo(toSave,CV_32F);
+//        for (int i = 1; i < face128dList.size(); i++) {
+//            face128dList[i].convertTo(face128dList[i],CV_32F);
+//            double min, max;
+//            cv::minMaxLoc(face128dList[i], &min, &max);
+//            std::cout << "Max is " << max << std::endl;
+//            toSave.push_back(face128dList[i]);
+//        }
         if (fileExists(filename)) {
             //delete
             remove(filename.c_str());
@@ -322,12 +337,13 @@ int main(int argc, char *argv[]) {
             std::cout << "Delete Old Face info for [" << userId << "] failed." << std::endl;
             return 2;
         }
+        std::cout << "To Save Type " << toSave.type() << std::endl;
         cv::FileStorage saveFaceInfo(filename, cv::FileStorage::WRITE);
         saveFaceInfo << "matdata" << toSave;
         saveFaceInfo.release();
         if (fileExists(filename)) {
             std::cout << "Face info for [" << userId << "] added succeed." << std::endl;
-            updateSVC();
+            updateSVC2();
             return 0;
         } else {
             std::cout << "Face info for [" << userId << "] added failed." << std::endl;

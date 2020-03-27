@@ -54,6 +54,40 @@ Mat ResizeAndPaddingMat(Mat &pSrcMat, int expectRowCount, int expectColCount) {
     return outputPadding;
 }
 
+Mat CalcHistgram(std::vector<int> & pVec) {
+    Mat pSrcMat(pVec);
+    pSrcMat = pSrcMat.reshape(1,1);
+    std::cout << pSrcMat.size << " " << pSrcMat.type() << std::endl;
+    double minVal;
+    double maxVal;
+    cv::Point minLoc;
+    cv::Point maxLoc;
+    minMaxLoc(pSrcMat, &minVal, &maxVal, &minLoc, &maxLoc);
+    maxVal = maxVal + 1;
+    int histSize = 10;
+    float range[] = {(float) minVal, (float) maxVal}; //the upper boundary is exclusive
+    const float *histRange = {range};
+    cv::Mat histMat;
+    calcHist(&pSrcMat,
+             1,
+             0,
+             cv::Mat(),
+             histMat,
+             1,
+             &histSize,
+             &histRange,
+             true,
+             false);
+    float binAnchor[10 + 1] = {};
+    binAnchor[0] = minVal;
+    for (int i = 1; i < 10 + 1; i++) {
+        binAnchor[i] = (maxVal - minVal) / 10.0 * i + binAnchor[0];
+    }
+    Mat anchorMat(1,11, CV_32F, binAnchor);
+    std::cout << "Anchor List " << anchorMat << std::endl;
+    return histMat;
+}
+
 Mat FilterMatWithHist(Mat &pSrcMat) {
     double minVal;
     double maxVal;

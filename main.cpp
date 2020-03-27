@@ -12,6 +12,9 @@
 #include <dlib/dnn.h>
 
 #include <random>
+#include <numeric>
+
+#include "svm.hpp"
 
 template<template<int, template<typename> class, int, typename> class block, int N,
         template<typename> class BN, typename SUBNET>
@@ -47,6 +50,9 @@ std::vector<std::string> split(const std::string &s, char delim) {
     }
     return elems;
 }
+
+#define Malloc(type, n) (type *)malloc((n)*sizeof(type))
+
 
 const int rt_succeed = 0;
 const int rt_user128dfilenotfoundorbroken = 100;
@@ -123,11 +129,13 @@ int main(int argc, char *argv[]) {
         return rt_parameterwrong;
     }
 
+    bool debugFlag = true;
+
     const int CamWidth = 1280;
     const int CamHeight = 720;
     const int ViewWidth = 720;
     const int ViewHeight = 720;
-    const int TimeoutSeconds = 50;
+    const int TimeoutSeconds = 5;
 
     const int Margin = 20;
     const float AreanRatioMin = 1.0 / 9.0;
@@ -171,7 +179,9 @@ int main(int argc, char *argv[]) {
     rs2::align align_to_color(RS2_STREAM_COLOR);
 
     cv::String window_name = "Linux Face Authentication";
-    namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+    if (debugFlag == true) {
+        namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+    }
 
     std::random_device rd;
     std::mt19937 mt(rd());
@@ -187,6 +197,71 @@ int main(int argc, char *argv[]) {
         mp.insert(std::make_pair(tmpres[0], tmpres[1]));
     }
     file.close();
+
+    //test
+    //here I will create a small artificial problem just for illustration
+    std::vector<std::vector<double>> data;
+    std::vector<int> labels;
+    std::map<std::string, std::string> mp2;
+    LoadDataForSVM(data, labels, mp2);
+    int sizeOfProblem = data.size(); //number of lines with labels
+    int elements = 128; //number of features for each data vector
+    //read data
+    //initialize the size of the problem with just an int
+    struct svm_parameter param;        // set by parse_command_line
+    struct svm_problem prob;        // set by read_problem
+    struct svm_model *model;
+    struct svm_node *x_space;
+    prob.l = sizeOfProblem;
+    //here we need to give some memory to our structures
+    // @param prob.l = number of labels
+    // @param elements = number of features for each label
+    prob.y = Malloc(double, prob.l); //space for prob.l doubles
+    prob.x = Malloc(struct svm_node *, prob.l); //space for prob.l pointers to struct svm_node
+    x_space = Malloc(struct svm_node, (elements + 1) * prob.l); //memory for pairs of index/value
+    //initialize the different lables with an array of labels
+    for (int i = 0; i < prob.l; ++i) {
+        prob.y[i] = labels[i];
+    }
+    //initialize the svm_node vector with input data array as follows:
+    int trainj = 0; //counter to traverse x_space[i];
+    for (int i = 0; i < prob.l; ++i) {
+        //set i-th element of prob.x to the address of x_space[j].
+        //elements from x_space[j] to x_space[j+data[i].size] get filled right after next line
+        prob.x[i] = &x_space[trainj];
+        for (int k = 0; k < data[i].size(); ++k, ++trainj) {
+            x_space[trainj].index = k + 1; //index of value
+            x_space[trainj].value = data[i][k]; //value
+        }
+        x_space[trainj].index = -1;//state the end of data vector
+        x_space[trainj].value = 0;
+        trainj++;
+    }
+    //set all default parameters for param struct
+    param.svm_type = C_SVC;
+    param.kernel_type = RBF;
+    param.degree = 3;
+    param.gamma = 1.0 / 256;    // 1/num_features
+    param.coef0 = 0;
+    param.nu = 0.5;
+    param.cache_size = 200;
+    param.C = 100000000;
+    param.eps = 1e-3;
+    param.p = 0.1;
+    param.shrinking = 1;
+    param.probability = 1;
+    param.nr_weight = 0;
+    param.weight_label = NULL;
+    param.weight = NULL;
+    model = svm_train(&prob, &param);
+    //end test
+
+    cv::Mat userMat;
+    cv::FileStorage tmpload(userConfigPath + userId, cv::FileStorage::READ);
+    tmpload["matdata"] >> userMat;
+    tmpload.release();
+    std::cout << "Read File [" << userConfigPath + userId << "]" << std::endl;
+    //std::cout << "Read File [[" << userMat << "]]" << std::endl;
 
     while (true) {
         //check execution time > 5 seconds
@@ -292,6 +367,9 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        //debug
+        isDepthNormal = true;
+
         if (opencvDetectedCount == 1 && isFacePositionNormal == true && isDepthNormal == true) {
             cv::Mat resized;
             cv::resize(color_mat, resized, cv::Size(360, 360));
@@ -325,26 +403,73 @@ int main(int argc, char *argv[]) {
 
                 std::vector<dlib::matrix<float, 0, 1>> face_descriptors = dlibFace128dNet(faces);
                 if (face_descriptors.size() == 1) {
+                    //fresh time when face detected
+                    start = std::chrono::system_clock::now();
+
                     auto face128d = dlib::toMat(face_descriptors[0]).reshape(0, 1);
+
+                    //std::cout << face128d.type() << std::endl;
+
+                    std::vector<double> disVec;
+                    for (int tmpi = 0; tmpi < userMat.rows; tmpi++) {
+                        double tmpres = 0.0;
+                        for (int tmpj = 0; tmpj < userMat.cols; tmpj++) {
+                            tmpres +=
+                                    (face128d.at<float>(0, tmpj) - userMat.at<float>(tmpi, tmpj)) *
+                                    (face128d.at<float>(0, tmpj) - userMat.at<float>(tmpi, tmpj));
+                        }
+                        tmpres = std::sqrt(tmpres);
+                        disVec.push_back(tmpres);
+                    }
+
+                    //cv::Mat tmphist(disVec);
+                    //auto tmphist = CalcHistgram(disVec);
+//                    double sum = std::accumulate(disVec.begin(), disVec.end(), 0.0);
+//                    double mean = sum / disVec.size();
+//                    double sq_sum = std::inner_product(disVec.begin(), disVec.end(), disVec.begin(), 0.0);
+//                    double stdev = std::sqrt(sq_sum / disVec.size() - mean * mean);
+//                    std::cout << disVec.size() << " mean is " << mean <<
+//                              " stdev is " << stdev << std::endl;
+
+//svc do not work properly as intent
+//                    double * resprob = new double [3];
+//                    struct svm_node *svmVec;
+//                    svmVec = Malloc(struct svm_node, (elements + 1));
+//                    int c = 0;
+//                    for (; c < face128d.cols; c++)
+//                    {
+//                        svmVec[c].index = c+1; // Index starts from 1; Pre-computed kernel starts from 0
+//                        svmVec[c].value = face128d.at<float>(0,c);
+//                    }
+//                    svmVec[c].index = -1;
+//                    auto predictedlabel = svm_predict_probability(model , svmVec , resprob);
+//                    std::cout << "predicted result is " << predictedlabel << ":" << resprob[0] << "," << resprob[1] <<  "," << resprob[2] << std::endl;
+//                    delete resprob;
+//                    free (svmVec);
+
+//opencv's svm work better than top ,but it is still not reliable
                     Mat predictOutput;
                     auto predictRes = svm->predict(face128d);
 
+                    std::cout << "predicted result is " << predictRes << std::endl;
+
                     if (mp.count(std::to_string(static_cast<int>(predictRes))) == 1) {
+                        std::cout << "predicted user is " << mp.at(std::to_string(static_cast<int>(predictRes)))
+                                  << std::endl;
                         if (userId == mp.at(std::to_string(static_cast<int>(predictRes)))) {
                             std::cout << "authentication for [" << userId << "] succeed " << std::endl;
                             resCode = rt_succeed;
-                            break;
+                            //break;
                         }
                     }
-
-                    std::cout << mp.size() << " , " << mp.count(std::to_string(static_cast<int>(predictRes))) << " , "
-                              << predictRes << std::endl;
                 }
             }
         }
 
-        imshow(window_name, color_mat);
-        if (cv::waitKey(1) >= 0) break;
+        if (debugFlag == true) {
+            imshow(window_name, color_mat);
+            if (cv::waitKey(1) >= 0) break;
+        }
     }
 
     std::cout << "@@@@ Test Execution by Pam, Return " << resCode << std::endl;

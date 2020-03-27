@@ -36,6 +36,204 @@ bool fileExists(const std::string &name) {
     }
 }
 
+void matToVec(cv::Mat &pmat, std::vector<std::vector<float>> &pvec) {
+    for (int i = 0; i < pmat.rows; i++) {
+        std::vector<float> tmpvec;
+        pmat.row(i).copyTo(tmpvec);
+        pvec.push_back(tmpvec);
+    }
+}
+
+void matToVec(cv::Mat &pmat, std::vector<std::vector<double>> &pvec) {
+    for (int i = 0; i < pmat.rows; i++) {
+        std::vector<double> tmpvec;
+        pmat.row(i).copyTo(tmpvec);
+        pvec.push_back(tmpvec);
+    }
+}
+
+bool LoadDataForSVM(std::vector<std::vector<double >> &trainDataList,
+                    std::vector<int> &trainLabelList, std::map<std::string, std::string> &labelToString) {
+    std::vector<std::string> fileList;
+    if (auto dir = opendir(userConfigPath.c_str())) {
+        while (auto f = readdir(dir)) {
+            if (!f->d_name || f->d_name[0] == '.') {
+                continue; // Skip everything that starts with a dot
+            }
+            if (f->d_type == DT_REG) {
+                std::string tmpfile(f->d_name);
+                fileList.push_back(tmpfile);
+            }
+        }
+        closedir(dir);
+    }
+
+    cv::FileStorage savefaceconfig(otherConfigPath, cv::FileStorage::READ);
+    cv::Mat otherMat;
+    savefaceconfig["matdata"] >> otherMat;
+    savefaceconfig.release();
+
+    if (otherMat.rows > 0 && otherMat.cols == 128) {
+        matToVec(otherMat, trainDataList);
+        for (int tmpi = 0; tmpi < otherMat.rows; tmpi++) {
+            trainLabelList.push_back(-1);
+        }
+
+        labelToString.insert(std::make_pair(std::to_string(-1), "Unknown"));
+
+        int processedCount = 0;
+        for (auto tmpfile : fileList) {
+            cv::Mat tmpMat;
+            try {
+                cv::FileStorage tmpload(userConfigPath + tmpfile, cv::FileStorage::READ);
+                tmpload["matdata"] >> tmpMat;
+                tmpload.release();
+            } catch (...) {
+                std::cout << "processing file [" << tmpfile << "] failed" << std::endl;
+                continue;
+            }
+
+            if (tmpMat.rows > 0 && tmpMat.cols == 128) {
+                processedCount++;
+                matToVec(tmpMat, trainDataList);
+                for (int tmpi = 0; tmpi < tmpMat.rows; tmpi++) {
+                    trainLabelList.push_back(processedCount);
+                }
+                labelToString.insert(std::make_pair(std::to_string(processedCount), tmpfile));
+            }
+        }
+
+        if (processedCount < 1) {
+            std::cout << "no face config found" << std::endl;
+            return false;
+        }
+
+        //vector to mat
+        cv::Mat trainDataMat = cv::Mat(trainDataList.size(), trainDataList[0].size(), CV_32F);
+        for (int i = 0; i < trainDataList.size(); i++) {
+            for (int j = 0; j < trainDataList[i].size(); j++) {
+                trainDataMat.at<float>(i, j) = trainDataList[i][j];
+            }
+        }
+        cv::Mat trainLabelMat = cv::Mat(trainLabelList.size(), 1, CV_32S);
+        for (int i = 0; i < trainLabelList.size(); i++) {
+            trainLabelMat.at<float>(i, 0) = trainLabelList[i];
+        }
+
+    } else {
+        std::cout << "OtherConfig.xml not exist or broken" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool updateSVC2() {
+    std::vector<std::string> fileList;
+    if (auto dir = opendir(userConfigPath.c_str())) {
+        while (auto f = readdir(dir)) {
+            if (!f->d_name || f->d_name[0] == '.') {
+                continue; // Skip everything that starts with a dot
+            }
+            if (f->d_type == DT_REG) {
+                std::string tmpfile(f->d_name);
+                fileList.push_back(tmpfile);
+            }
+        }
+        closedir(dir);
+    }
+
+    cv::FileStorage savefaceconfig(otherConfigPath, cv::FileStorage::READ);
+    cv::Mat otherMat;
+    savefaceconfig["matdata"] >> otherMat;
+    savefaceconfig.release();
+    std::map<std::string, std::string> mp;
+
+    std::vector<std::vector<float>> trainDataList;
+    std::vector<int> trainLabelList;
+
+    if (otherMat.rows > 0 && otherMat.cols == 128) {
+        matToVec(otherMat, trainDataList);
+        for (int tmpi = 0; tmpi < otherMat.rows; tmpi++) {
+            trainLabelList.push_back(-1);
+        }
+
+        int processedCount = 0;
+        for (auto tmpfile : fileList) {
+            cv::Mat tmpMat;
+            try {
+                cv::FileStorage tmpload(userConfigPath + tmpfile, cv::FileStorage::READ);
+                tmpload["matdata"] >> tmpMat;
+                tmpload.release();
+            } catch (...) {
+                std::cout << "processing file [" << tmpfile << "] failed" << std::endl;
+                continue;
+            }
+
+            if (tmpMat.rows > 0 && tmpMat.cols == 128) {
+                processedCount++;
+                matToVec(tmpMat, trainDataList);
+                for (int tmpi = 0; tmpi < tmpMat.rows; tmpi++) {
+                    trainLabelList.push_back(processedCount);
+                }
+                mp.insert(std::make_pair(tmpfile, std::to_string(processedCount)));
+            }
+        }
+
+        if (processedCount < 1) {
+            std::cout << "no face config found" << std::endl;
+            return false;
+        }
+
+        //vector to mat
+        cv::Mat trainDataMat = cv::Mat(trainDataList.size(), trainDataList[0].size(), CV_32F);
+        for (int i = 0; i < trainDataList.size(); i++) {
+            for (int j = 0; j < trainDataList[i].size(); j++) {
+                trainDataMat.at<float>(i, j) = trainDataList[i][j];
+            }
+        }
+        cv::Mat trainLabelMat = cv::Mat(trainLabelList.size(), 1, CV_32S);
+        for (int i = 0; i < trainLabelList.size(); i++) {
+            trainLabelMat.at<float>(i, 0) = trainLabelList[i];
+        }
+
+        cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::create();
+        svm->setType(cv::ml::SVM::C_SVC);
+        svm->setKernel(cv::ml::SVM::RBF);
+        svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER, std::numeric_limits<int>::max(), 1e-6));
+        svm->train(trainDataMat, cv::ml::ROW_SAMPLE, trainLabelMat);
+
+        if (fileExists(svmConfig)) {
+            remove(svmConfig.c_str());
+        }
+        if (fileExists(svmConfig)) {
+            std::cout << "Delete old svm config file failed" << std::endl;
+            return false;
+        }
+        if (fileExists(userSVMMapConfig)) {
+            remove(userSVMMapConfig.c_str());
+        }
+        if (fileExists(userSVMMapConfig)) {
+            std::cout << "Delete old svm config file failed" << std::endl;
+            return false;
+        }
+
+        svm->save(svmConfig);
+        if (fileExists(svmConfig)) {
+            std::ofstream out(userSVMMapConfig);
+            for (auto&[key, value]: mp) {
+                out << value << "\t" << key << std::endl;
+            }
+            out.close();
+            std::cout << "svm config update succeed" << std::endl;
+        }
+
+    } else {
+        std::cout << "OtherConfig.xml not exist or broken" << std::endl;
+        return false;
+    }
+    return true;
+}
+
 bool updateSVC() {
     std::vector<std::string> fileList;
     if (auto dir = opendir(userConfigPath.c_str())) {
@@ -57,6 +255,9 @@ bool updateSVC() {
     savefaceconfig.release();
     //std::cout << otherMat.type() << " == " << CV_32F << std::endl;
     std::map<std::string, std::string> mp;
+
+    std::vector<std::vector<float>> trainDataList;
+    std::vector<int> trainLabelList;
 
     if (otherMat.rows > 0 && otherMat.cols == 128) {
         std::string str = "..";
@@ -128,7 +329,7 @@ bool updateSVC() {
         svm->save(svmConfig);
         if (fileExists(svmConfig)) {
             std::ofstream out(userSVMMapConfig);
-            for (auto& [key, value]: mp) {
+            for (auto&[key, value]: mp) {
                 out << value << "\t" << key << std::endl;
             }
             out.close();
