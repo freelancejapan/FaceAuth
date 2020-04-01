@@ -53,14 +53,37 @@ int main(int argc, char *argv[]) {
     bool addUserFlag = false;
     std::string filename = "";
     std::string userId = "";
+    bool testFlag = false;
 
     if (argc == 3) {
         if (strcmp(argv[1], "test") == 0
             && strcmp(argv[2], "camera") == 0) {
             //test camera
+            testFlag = true;
+            shouldExtract128dFlag = true;
         } else if (strcmp(argv[1], "list") == 0
                    && strcmp(argv[2], "all") == 0) {
             //list all user
+            std::vector<std::string> faceFileList;
+            ListFaceDirectory(faceFileList);
+            if (faceFileList.size() < 1) {
+                std::cout << "No Face Config File Found" << std::endl;
+                return 0;
+            }
+            std::cout << "All Found User's Face Config Files:" << std::endl;
+            for (int i = 0; i < faceFileList.size(); i++) {
+                std::string fileStatus = "Normal";
+                try {
+                    cv::Mat testMat;
+                    cv::FileStorage testFileLoad(userConfigPath + faceFileList[i], cv::FileStorage::READ);
+                    testFileLoad["matdata"] >> testMat;
+                    testFileLoad.release();
+                } catch (...) {
+                    fileStatus = "Broken";
+                }
+                std::cout << "\t" << faceFileList[i] << "\t" << fileStatus << std::endl;
+            }
+            return 0;
         } else if (strcmp(argv[1], "add") == 0) {
             //add user
             //remove exist and create new
@@ -71,8 +94,24 @@ int main(int argc, char *argv[]) {
             filename = userConfigPath + userId;
 
         } else if (strcmp(argv[1], "del") == 0) {
+            userId = std::string(argv[2]);
+            filename = userConfigPath + userId;
             //delete user
-            cv::String userId(argv[2]);
+            if (fileExists(filename)) {
+                //delete
+                remove(filename.c_str());
+            }
+            if (fileExists(filename)) {
+                //check delete succeed
+                std::cout << "Delete Face info for [" << userId << "] failed." << std::endl;
+                return 2;
+            }
+
+            //SVM is not a good solution
+            //after some research , we enable svm
+            //updateSVC2();
+
+            return 0;
         } else {
             std::cout << "Usage:" << std::endl;
             std::cout << "      faceInfoMgr add userid" << std::endl;
@@ -94,7 +133,7 @@ int main(int argc, char *argv[]) {
     const int CamHeight = 720;
     const int ViewWidth = 720;
     const int ViewHeight = 720;
-    const int TimeoutSeconds = 50;
+    const int TimeoutSeconds = 10;
     const int MinFace128dCount = 128;
 
     const int Margin = 20;
@@ -254,7 +293,7 @@ int main(int argc, char *argv[]) {
             && isDepthNormal == true
             && shouldExtract128dFlag == true) {
             cv::Mat resized;
-            cv::resize(color_mat, resized, cv::Size(360, 360));
+            cv::resize(color_mat, resized, cv::Size(250, 300));
             dlib::cv_image<dlib::bgr_pixel> dlibImg(resized);
             std::vector<dlib::rectangle> faceRectList = dlibHogDetector(dlibImg);
             std::vector<dlib::matrix<dlib::rgb_pixel>> faces;
@@ -285,22 +324,34 @@ int main(int argc, char *argv[]) {
 
                 std::vector<dlib::matrix<float, 0, 1>> face_descriptors = dlibFace128dNet(faces);
                 if (face_descriptors.size() == 1) {
-                    //fresh time when face detected
-                    start = std::chrono::system_clock::now();
 
-                    auto face128d = dlib::toMat(face_descriptors[0]).reshape(0, 1);
-                    double min, max;
-                    cv::minMaxLoc(face128d, &min, &max);
-                    //std::cout << "Max is " << max << std::endl;
-                    std::cout << "Dlib Type " << max << std::endl;
-                    if (addUserFlag == true) {
-                        //reset time when succeed add face
+                    if (testFlag == true) {
+                        cv::putText(color_mat,
+                                "Test Succeed",
+                                cv::Point(360,360),
+                                cv::FONT_HERSHEY_SIMPLEX,
+                                1,
+                                cv::Scalar(255,255,0),
+                                2);
+                    } else {
+                        //fresh time when face detected
                         start = std::chrono::system_clock::now();
-                        std::vector<float> tmpvec;
-                        face128d.row(0).copyTo(tmpvec);
-                        face128dList.push_back(tmpvec);
-                        if (face128dList.size() > MinFace128dCount) {
-                            break;
+                        auto face128d = dlib::toMat(face_descriptors[0]).reshape(0, 1);
+
+                        //To debug why OpenCV save Mat to file fails
+                        //double min, max;
+                        //cv::minMaxLoc(face128d, &min, &max);
+                        //std::cout << "Max is " << max << std::endl;
+
+                        if (addUserFlag == true) {
+                            //reset time when succeed add face
+                            start = std::chrono::system_clock::now();
+                            std::vector<float> tmpvec;
+                            face128d.row(0).copyTo(tmpvec);
+                            face128dList.push_back(tmpvec);
+                            if (face128dList.size() > MinFace128dCount) {
+                                break;
+                            }
                         }
                     }
                 }
@@ -343,14 +394,15 @@ int main(int argc, char *argv[]) {
         saveFaceInfo.release();
         if (fileExists(filename)) {
             std::cout << "Face info for [" << userId << "] added succeed." << std::endl;
-            updateSVC2();
+
+            //SVM is not a good solution
+            //after some research , we enable svm
+            //updateSVC2();
             return 0;
         } else {
             std::cout << "Face info for [" << userId << "] added failed." << std::endl;
             return 1;
         }
     }
-
-    std::cout << "@@@@ Test Execution by Pam, Return " << resCode << std::endl;
     return resCode;
 }

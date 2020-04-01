@@ -187,9 +187,10 @@ int main(int argc, char *argv[]) {
     std::mt19937 mt(rd());
     std::uniform_real_distribution<double> dist(1.0, 10.0);
 
+    //opencv svm predict face label
+    //to get name we use map : face label -> name
     cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::load(svmConfig);
     std::map<std::string, std::string> mp;
-
     std::ifstream file(userSVMMapConfig);
     std::string tmpstr;
     while (std::getline(file, tmpstr)) {
@@ -198,70 +199,68 @@ int main(int argc, char *argv[]) {
     }
     file.close();
 
-    //test
-    //here I will create a small artificial problem just for illustration
-    std::vector<std::vector<double>> data;
-    std::vector<int> labels;
-    std::map<std::string, std::string> mp2;
-    LoadDataForSVM(data, labels, mp2);
-    int sizeOfProblem = data.size(); //number of lines with labels
-    int elements = 128; //number of features for each data vector
-    //read data
-    //initialize the size of the problem with just an int
-    struct svm_parameter param;        // set by parse_command_line
-    struct svm_problem prob;        // set by read_problem
-    struct svm_model *model;
-    struct svm_node *x_space;
-    prob.l = sizeOfProblem;
-    //here we need to give some memory to our structures
-    // @param prob.l = number of labels
-    // @param elements = number of features for each label
-    prob.y = Malloc(double, prob.l); //space for prob.l doubles
-    prob.x = Malloc(struct svm_node *, prob.l); //space for prob.l pointers to struct svm_node
-    x_space = Malloc(struct svm_node, (elements + 1) * prob.l); //memory for pairs of index/value
-    //initialize the different lables with an array of labels
-    for (int i = 0; i < prob.l; ++i) {
-        prob.y[i] = labels[i];
-    }
-    //initialize the svm_node vector with input data array as follows:
-    int trainj = 0; //counter to traverse x_space[i];
-    for (int i = 0; i < prob.l; ++i) {
-        //set i-th element of prob.x to the address of x_space[j].
-        //elements from x_space[j] to x_space[j+data[i].size] get filled right after next line
-        prob.x[i] = &x_space[trainj];
-        for (int k = 0; k < data[i].size(); ++k, ++trainj) {
-            x_space[trainj].index = k + 1; //index of value
-            x_space[trainj].value = data[i][k]; //value
-        }
-        x_space[trainj].index = -1;//state the end of data vector
-        x_space[trainj].value = 0;
-        trainj++;
-    }
-    //set all default parameters for param struct
-    param.svm_type = C_SVC;
-    param.kernel_type = RBF;
-    param.degree = 3;
-    param.gamma = 1.0 / 256;    // 1/num_features
-    param.coef0 = 0;
-    param.nu = 0.5;
-    param.cache_size = 200;
-    param.C = 100000000;
-    param.eps = 1e-3;
-    param.p = 0.1;
-    param.shrinking = 1;
-    param.probability = 1;
-    param.nr_weight = 0;
-    param.weight_label = NULL;
-    param.weight = NULL;
-    model = svm_train(&prob, &param);
-    //end test
+//    //test
+//    //here I will create a small artificial problem just for illustration
+//    std::vector<std::vector<double>> data;
+//    std::vector<int> labels;
+//    std::map<std::string, std::string> mp2;
+//    LoadDataForSVM(data, labels, mp2);
+//    int sizeOfProblem = data.size(); //number of lines with labels
+//    int elements = 128; //number of features for each data vector
+//    //read data
+//    //initialize the size of the problem with just an int
+//    struct svm_parameter param;        // set by parse_command_line
+//    struct svm_problem prob;        // set by read_problem
+//    struct svm_model *model;
+//    struct svm_node *x_space;
+//    prob.l = sizeOfProblem;
+//    //here we need to give some memory to our structures
+//    // @param prob.l = number of labels
+//    // @param elements = number of features for each label
+//    prob.y = Malloc(double, prob.l); //space for prob.l doubles
+//    prob.x = Malloc(struct svm_node *, prob.l); //space for prob.l pointers to struct svm_node
+//    x_space = Malloc(struct svm_node, (elements + 1) * prob.l); //memory for pairs of index/value
+//    //initialize the different lables with an array of labels
+//    for (int i = 0; i < prob.l; ++i) {
+//        prob.y[i] = labels[i];
+//    }
+//    //initialize the svm_node vector with input data array as follows:
+//    int trainj = 0; //counter to traverse x_space[i];
+//    for (int i = 0; i < prob.l; ++i) {
+//        //set i-th element of prob.x to the address of x_space[j].
+//        //elements from x_space[j] to x_space[j+data[i].size] get filled right after next line
+//        prob.x[i] = &x_space[trainj];
+//        for (int k = 0; k < data[i].size(); ++k, ++trainj) {
+//            x_space[trainj].index = k + 1; //index of value
+//            x_space[trainj].value = data[i][k]; //value
+//        }
+//        x_space[trainj].index = -1;//state the end of data vector
+//        x_space[trainj].value = 0;
+//        trainj++;
+//    }
+//    //set all default parameters for param struct
+//    param.svm_type = C_SVC;
+//    param.kernel_type = RBF;
+//    param.degree = 3;
+//    param.gamma = 1.0 / 256;    // 1/num_features
+//    param.coef0 = 0;
+//    param.nu = 0.5;
+//    param.cache_size = 200;
+//    param.C = 100000000;
+//    param.eps = 1e-3;
+//    param.p = 0.1;
+//    param.shrinking = 1;
+//    param.probability = 1;
+//    param.nr_weight = 0;
+//    param.weight_label = NULL;
+//    param.weight = NULL;
+//    model = svm_train(&prob, &param);
+//    //end test
 
     cv::Mat userMat;
     cv::FileStorage tmpload(userConfigPath + userId, cv::FileStorage::READ);
     tmpload["matdata"] >> userMat;
     tmpload.release();
-    std::cout << "Read File [" << userConfigPath + userId << "]" << std::endl;
-    //std::cout << "Read File [[" << userMat << "]]" << std::endl;
 
     while (true) {
         //check execution time > 5 seconds
@@ -410,6 +409,8 @@ int main(int argc, char *argv[]) {
 
                     //std::cout << face128d.type() << std::endl;
 
+                    //distance vector's data type is double
+                    //Opencv calculate histgram need integer
                     std::vector<double> disVec;
                     for (int tmpi = 0; tmpi < userMat.rows; tmpi++) {
                         double tmpres = 0.0;
@@ -422,46 +423,52 @@ int main(int argc, char *argv[]) {
                         disVec.push_back(tmpres);
                     }
 
-                    //cv::Mat tmphist(disVec);
-                    //auto tmphist = CalcHistgram(disVec);
-//                    double sum = std::accumulate(disVec.begin(), disVec.end(), 0.0);
-//                    double mean = sum / disVec.size();
-//                    double sq_sum = std::inner_product(disVec.begin(), disVec.end(), disVec.begin(), 0.0);
-//                    double stdev = std::sqrt(sq_sum / disVec.size() - mean * mean);
-//                    std::cout << disVec.size() << " mean is " << mean <<
-//                              " stdev is " << stdev << std::endl;
+                    //SVC is not reliable comparing caclulate distance
+                    double sum = std::accumulate(disVec.begin(), disVec.end(), 0.0);
+                    double mean = sum / disVec.size();
+                    double sq_sum = std::inner_product(disVec.begin(), disVec.end(), disVec.begin(), 0.0);
+                    double stdev = std::sqrt(sq_sum / disVec.size() - mean * mean);
+                    std::cout << disVec.size() << " mean is " << mean <<
+                              " stdev is " << stdev << std::endl;
+
+                    //authentication succeed
+                    //break
+                    if (mean < 0.4 && stdev < 0.2) {
+                        resCode = rt_succeed;
+                        break;
+                    }
 
 //svc do not work properly as intent
-//                    double * resprob = new double [3];
+//                    double *resprob = new double[3];
 //                    struct svm_node *svmVec;
 //                    svmVec = Malloc(struct svm_node, (elements + 1));
 //                    int c = 0;
-//                    for (; c < face128d.cols; c++)
-//                    {
-//                        svmVec[c].index = c+1; // Index starts from 1; Pre-computed kernel starts from 0
-//                        svmVec[c].value = face128d.at<float>(0,c);
+//                    for (; c < face128d.cols; c++) {
+//                        svmVec[c].index = c + 1; // Index starts from 1; Pre-computed kernel starts from 0
+//                        svmVec[c].value = face128d.at<float>(0, c);
 //                    }
 //                    svmVec[c].index = -1;
-//                    auto predictedlabel = svm_predict_probability(model , svmVec , resprob);
-//                    std::cout << "predicted result is " << predictedlabel << ":" << resprob[0] << "," << resprob[1] <<  "," << resprob[2] << std::endl;
+//                    auto predictedlabel = svm_predict_probability(model, svmVec, resprob);
+//                    std::cout << "predicted result is " << predictedlabel << ":" << resprob[0] << "," << resprob[1]
+//                              << "," << resprob[2] << std::endl;
 //                    delete resprob;
-//                    free (svmVec);
+//                    free(svmVec);
 
 //opencv's svm work better than top ,but it is still not reliable
-                    Mat predictOutput;
-                    auto predictRes = svm->predict(face128d);
+//                    Mat predictOutput;
+//                    auto predictRes = svm->predict(face128d);
+//                    if (mp.count(std::to_string(static_cast<int>(predictRes))) == 1) {
+//                        std::cout << "predicted user is " << mp.at(std::to_string(static_cast<int>(predictRes)))
+//                                  << std::endl;
+//                        if (userId == mp.at(std::to_string(static_cast<int>(predictRes)))) {
+//                            //std::cout << "authentication for [" << userId << "] succeed " << std::endl;
+//                            resCode = rt_succeed;
+//                            //break;
+//                        }
+//                    } else {
+//                        std::cout << "predicted result is " << predictRes << std::endl;
+//                    }
 
-                    std::cout << "predicted result is " << predictRes << std::endl;
-
-                    if (mp.count(std::to_string(static_cast<int>(predictRes))) == 1) {
-                        std::cout << "predicted user is " << mp.at(std::to_string(static_cast<int>(predictRes)))
-                                  << std::endl;
-                        if (userId == mp.at(std::to_string(static_cast<int>(predictRes)))) {
-                            std::cout << "authentication for [" << userId << "] succeed " << std::endl;
-                            resCode = rt_succeed;
-                            //break;
-                        }
-                    }
                 }
             }
         }
@@ -471,6 +478,8 @@ int main(int argc, char *argv[]) {
             if (cv::waitKey(1) >= 0) break;
         }
     }
+
+    pipe.stop();
 
     std::cout << "@@@@ Test Execution by Pam, Return " << resCode << std::endl;
     return resCode;

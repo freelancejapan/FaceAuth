@@ -52,6 +52,21 @@ void matToVec(cv::Mat &pmat, std::vector<std::vector<double>> &pvec) {
     }
 }
 
+void ListFaceDirectory(std::vector<std::string> &fileList) {
+    if (auto dir = opendir(userConfigPath.c_str())) {
+        while (auto f = readdir(dir)) {
+            if (!f->d_name || f->d_name[0] == '.') {
+                continue; // Skip everything that starts with a dot
+            }
+            if (f->d_type == DT_REG) {
+                std::string tmpfile(f->d_name);
+                fileList.push_back(tmpfile);
+            }
+        }
+        closedir(dir);
+    }
+}
+
 bool LoadDataForSVM(std::vector<std::vector<double >> &trainDataList,
                     std::vector<int> &trainLabelList, std::map<std::string, std::string> &labelToString) {
     std::vector<std::string> fileList;
@@ -184,23 +199,40 @@ bool updateSVC2() {
             return false;
         }
 
+        double max = -1000;
+        double min = 1000;
         //vector to mat
         cv::Mat trainDataMat = cv::Mat(trainDataList.size(), trainDataList[0].size(), CV_32F);
         for (int i = 0; i < trainDataList.size(); i++) {
+            for (auto val : trainDataList[i]) {
+                if (val > max) {
+                    max = val;
+                }
+                if (val < min) {
+                    min = val;
+                }
+            }
+
             for (int j = 0; j < trainDataList[i].size(); j++) {
                 trainDataMat.at<float>(i, j) = trainDataList[i][j];
             }
         }
         cv::Mat trainLabelMat = cv::Mat(trainLabelList.size(), 1, CV_32S);
         for (int i = 0; i < trainLabelList.size(); i++) {
-            trainLabelMat.at<float>(i, 0) = trainLabelList[i];
+            trainLabelMat.at<int>(i, 0) = trainLabelList[i];
         }
+
+        std::cout << "Max Data is " << max << std::endl;
+        std::cout << "Min Data is " << min << std::endl;
 
         cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::create();
         svm->setType(cv::ml::SVM::C_SVC);
         svm->setKernel(cv::ml::SVM::RBF);
-        svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER, std::numeric_limits<int>::max(), 1e-6));
+        svm->setC(1000000);
+        svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER, 1000000, 1e-6));
         svm->train(trainDataMat, cv::ml::ROW_SAMPLE, trainLabelMat);
+
+        std::cout << "Training is finished , save config " << std::endl;
 
         if (fileExists(svmConfig)) {
             remove(svmConfig.c_str());
