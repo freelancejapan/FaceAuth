@@ -70,7 +70,7 @@ const int rt_parameterwrong = 130;
 //   -> 120 means face auth continuous fail count > 3 (continuous succeed 3 times can login)
 //   -> 121 means timeout (5 seconds no face detected)
 //   -> 130 parameter wrong
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) try {
     std::string userId = "";
     if (argc == 2) {
         userId = std::string(argv[1]);
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
         return rt_parameterwrong;
     }
 
-    bool debugFlag = true;
+    bool debugFlag = false;
 
     const int CamWidth = 1280;
     const int CamHeight = 720;
@@ -173,6 +173,7 @@ int main(int argc, char *argv[]) {
     rs2::config cfg;
     cfg.enable_stream(RS2_STREAM_DEPTH, CamWidth, CamHeight);
     cfg.enable_stream(RS2_STREAM_COLOR, CamWidth, CamHeight);
+    std::cout << "Pipe Start" << std::endl;
     pipe.start(cfg);
 
     rs2::align align_to_depth(RS2_STREAM_DEPTH);
@@ -262,6 +263,7 @@ int main(int argc, char *argv[]) {
     tmpload["matdata"] >> userMat;
     tmpload.release();
 
+    std::cout << "Pipe Read" << std::endl;
     while (true) {
         //check execution time > 5 seconds
         auto end = std::chrono::system_clock::now();
@@ -483,4 +485,9 @@ int main(int argc, char *argv[]) {
 
     std::cout << "@@@@ Test Execution by Pam, Return " << resCode << std::endl;
     return resCode;
+}
+catch (const std::exception& e)
+{
+    std::cout << e.what() << std::endl;
+    return rt_hardwarefail;
 }
